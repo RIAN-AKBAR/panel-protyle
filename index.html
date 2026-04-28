@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>Jadwal Sholat - Deteksi Lokasi Otomatis (IP & GPS)</title>
+  <!-- Google Fonts & Font Awesome -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #0f2b3d 0%, #1b4a6e 100%);
+      min-height: 100vh;
+      color: #1e293b;
+      padding: 1.5rem;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { text-align: center; margin-bottom: 2rem; }
+    .header h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #FFFFFF, #E0F2FE);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      margin-bottom: 0.5rem;
+    }
+    .header p { color: #BAE6FD; font-size: 0.95rem; }
+    .card {
+      background: rgba(255, 255, 255, 0.98);
+      border-radius: 2rem;
+      box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.25);
+      padding: 1.8rem;
+    }
+    .search-section { display: flex; flex-direction: column; gap: 1.2rem; margin-bottom: 2rem; }
+    .row-flex { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+    .input-group { flex: 1; min-width: 180px; }
+    .input-group label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #475569;
+      margin-bottom: 0.3rem;
+    }
+    .input-group input, .input-group select {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 1.5px solid #E2E8F0;
+      border-radius: 1.2rem;
+      font-size: 0.95rem;
+      font-weight: 500;
+      background: white;
+      font-family: 'Inter', sans-serif;
+    }
+    .input-group input:focus, .input-group select:focus {
+      outline: none;
+      border-color: #2c7da0;
+      box-shadow: 0 0 0 3px rgba(44, 125, 160, 0.2);
+    }
+    button {
+      background: #1e4a6e;
+      border: none;
+      padding: 0.75rem 1.8rem;
+      border-radius: 1.8rem;
+      font-weight: 600;
+      color: white;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: 'Inter', sans-serif;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      transition: all 0.2s;
+    }
+    button:hover { background: #0f3b57; transform: translateY(-1px); }
+    .btn-location { background: #0f5c3e; white-space: nowrap; }
+    .btn-location:hover { background: #0a3f2a; }
+    .relative { position: relative; }
+    .suggestions {
+      background: #F8FAFC;
+      border-radius: 1.2rem;
+      margin-top: 0.4rem;
+      max-height: 240px;
+      overflow-y: auto;
+      border: 1px solid #E2E8F0;
+      position: absolute;
+      width: 100%;
+      z-index: 20;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .suggestion-item {
+      padding: 0.8rem 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .suggestion-item:hover { background: #E0F2FE; }
+    .prayer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 1rem;
+      margin: 2rem 0 1rem;
+    }
+    .prayer-card {
+      background: white;
+      border-radius: 1.5rem;
+      padding: 1rem 0.8rem;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      border: 1px solid #EFF6FF;
+      transition: all 0.2s;
+    }
+    .prayer-card:hover { transform: translateY(-3px); border-color: #BDD9E8; }
+    .prayer-icon { font-size: 2rem; margin-bottom: 0.5rem; color: #1e4a6e; }
+    .prayer-name { font-weight: 700; font-size: 1rem; margin-bottom: 0.3rem; }
+    .prayer-time { font-size: 1.35rem; font-weight: 800; font-family: monospace; }
+    .extra-time { font-size: 0.75rem; color: #4b5563; margin-top: 4px; border-top: 1px dashed #E2E8F0; padding-top: 6px; }
+    .location-info { text-align: center; margin-top: 1rem; background: #F1F5F9; padding: 0.8rem; border-radius: 1.5rem; font-weight: 600; }
+    .loader { display: flex; justify-content: center; gap: 0.7rem; padding: 2rem; color: #2c7da0; }
+    .error-message { background: #FEF2F2; color: #B91C1C; padding: 1rem; border-radius: 1.2rem; text-align: center; margin: 1rem 0; font-weight: 500; }
+    .info-loading { text-align: center; padding: 1rem; color: #1e4a6e; }
+    footer { text-align: center; margin-top: 2rem; font-size: 0.75rem; color: #BAE6FD; }
+    @media (max-width: 640px) {
+      body { padding: 1rem; }
+      .card { padding: 1.2rem; }
+      .prayer-grid { grid-template-columns: repeat(2, 1fr); }
+      .prayer-time { font-size: 1rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1><i class="fas fa-mosque"></i> Jadwal Sholat</h1>
+    <p>Deteksi otomatis (GPS + IP) | Data Kemenag RI</p>
+  </div>
+  <div class="card">
+    <div class="search-section">
+      <div class="row-flex">
+        <div class="input-group" style="flex:2;">
+          <label><i class="fas fa-globe-asia"></i> Pilih Kota / Kabupaten</label>
+          <select id="citySelect"><option value="">-- Memuat daftar kota --</option></select>
+        </div>
+        <div>
+          <button id="detectLocationBtn" class="btn-location"><i class="fas fa-location-dot"></i> Gunakan Lokasi Saya</button>
+        </div>
+      </div>
+      <div class="row-flex">
+        <div class="input-group relative" style="flex:2;">
+          <label><i class="fas fa-search"></i> Atau cari kota lain</label>
+          <input type="text" id="cityInput" placeholder="Ketik nama kota" autocomplete="off">
+          <div id="suggestionsBox" class="suggestions" style="display: none;"></div>
+        </div>
+        <div class="input-group" style="flex:1;">
+          <label><i class="far fa-calendar-alt"></i> Tanggal</label>
+          <input type="date" id="datePicker">
+        </div>
+        <div><button id="searchBtn"><i class="fas fa-search"></i> Lihat Jadwal</button></div>
+      </div>
+      <small><i class="fas fa-satellite-dish"></i> Klik "Gunakan Lokasi Saya" → akan meminta izin GPS. Jika ditolak, otomatis cari berdasarkan IP.</small>
+    </div>
+    <div id="resultArea">
+      <div class="loader" id="loadingIndicator" style="display: none;"><i class="fas fa-spinner fa-pulse"></i> Mengambil jadwal...</div>
+      <div id="scheduleDisplay"><div class="info-loading"><i class="fas fa-cloud-download-alt"></i> Memuat daftar kota...</div></div>
+    </div>
+  </div>
+  <footer>⏰ myQuran API (Kemenag RI) | Lokasi: GPS + Nominatim | Fallback: IP-based (ip-api.com)</footer>
+</div>
+
+<script>
+  // ======================= GLOBAL =======================
+  let masterCities = [];
+  let selectedCity = null;
+  const citySelect = document.getElementById('citySelect');
+  const cityInput = document.getElementById('cityInput');
+  const suggestionsBox = document.getElementById('suggestionsBox');
+  const datePicker = document.getElementById('datePicker');
+  const searchBtn = document.getElementById('searchBtn');
+  const detectBtn = document.getElementById('detectLocationBtn');
+  const scheduleDisplayDiv = document.getElementById('scheduleDisplay');
+  const loadingIndicator = document.getElementById('loadingIndicator');
+
+  function setDefaultDate() {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    datePicker.value = `${yyyy}-${mm}-${dd}`;
+  }
+  setDefaultDate();
+
+  async function fetchJSON(url, timeout = 10000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(id);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      clearTimeout(id);
+      throw err;
+    }
+  }
+
+  // =============== 1. Ambil semua kota dari API ===============
+  async function loadAllCities() {
+    try {
+      scheduleDisplayDiv.innerHTML = `<div class="info-loading"><i class="fas fa-spinner fa-pulse"></i> Mengambil daftar kota dari server...</div>`;
+      const result = await fetchJSON("https://api.myquran.com/v2/sholat/kota/semua");
+      if (result.status === true && Array.isArray(result.data)) {
+        masterCities = result.data.map(c => ({ id: c.id, nama: c.lokasi, daerah: c.daerah || "" }));
+        populateDropdown(masterCities);
+        if (masterCities.length) {
+          const defaultCity = masterCities[0];
+          selectedCity = { id: defaultCity.id, lokasi: defaultCity.nama, daerah: defaultCity.daerah };
+          citySelect.value = defaultCity.id;
+          cityInput.value = `${defaultCity.nama}${defaultCity.daerah ? `, ${defaultCity.daerah}` : ''}`;
+          await loadSchedule();
+        }
+      } else throw new Error("Gagal memuat kota");
+    } catch (err) {
+      scheduleDisplayDiv.innerHTML = `<div class="error-message"><i class="fas fa-network-wired"></i> Gagal memuat kota: ${err.message}</div>`;
+    }
+  }
+
+  function populateDropdown(cities) {
+    citySelect.innerHTML = '<option value="">-- Pilih Kota / Kabupaten --</option>';
+    cities.forEach(city => {
+      const option = document.createElement('option');
+      option.value = city.id;
+      option.textContent = `${city.nama}${city.daerah ? ` (${city.daerah})` : ''}`;
+      option.setAttribute('data-nama', city.nama);
+      option.setAttribute('data-daerah', city.daerah);
+      citySelect.appendChild(option);
+    });
+  }
+
+  citySelect.addEventListener('change', function() {
+    const opt = citySelect.options[citySelect.selectedIndex];
+    if (opt.value) {
+      selectedCity = { id: opt.value, lokasi: opt.getAttribute('data-nama'), daerah: opt.getAttribute('data-daerah') };
+      cityInput.value = `${selectedCity.lokasi}${selectedCity.daerah ? `, ${selectedCity.daerah}` : ''}`;
+      suggestionsBox.style.display = 'none';
+      loadSchedule();
+    } else { selectedCity = null; cityInput.value = ''; }
+  });
+
+  // =============== Pencarian manual ===============
+  let debounceTimer = null;
+  cityInput.addEventListener('input', function(e) {
+    const keyword = e.target.value.trim();
+    if (debounceTimer) clearTimeout(debounceTimer);
+    if (keyword.length < 2) { suggestionsBox.style.display = 'none'; return; }
+    debounceTimer = setTimeout(() => searchCitiesManual(keyword), 350);
+  });
+
+  async function searchCitiesManual(keyword) {
+    try {
+      const result = await fetchJSON(`https://api.myquran.com/v2/sholat/kota/cari/${encodeURIComponent(keyword)}`);
+      if (result.status && result.data?.length) displaySuggestions(result.data);
+      else suggestionsBox.style.display = 'none';
+    } catch (err) { suggestionsBox.style.display = 'none'; }
+  }
+
+  function displaySuggestions(cities) {
+    suggestionsBox.innerHTML = '';
+    cities.slice(0, 12).forEach(city => {
+      const div = document.createElement('div');
+      div.className = 'suggestion-item';
+      div.innerHTML = `<i class="fas fa-map-marker-alt"></i> ${city.lokasi} ${city.daerah ? `(${city.daerah})` : ''}`;
+      div.addEventListener('click', () => {
+        selectedCity = { id: city.id, lokasi: city.lokasi, daerah: city.daerah || '' };
+        cityInput.value = `${city.lokasi}${city.daerah ? `, ${city.daerah}` : ''}`;
+        suggestionsBox.style.display = 'none';
+        const option = citySelect.querySelector(`option[value="${city.id}"]`);
+        if (option) citySelect.value = city.id; else citySelect.value = "";
+        loadSchedule();
+      });
+      suggestionsBox.appendChild(div);
+    });
+    suggestionsBox.style.display = 'block';
+  }
+  document.addEventListener('click', (e) => {
+    if (!cityInput.contains(e.target) && !suggestionsBox.contains(e.target)) suggestionsBox.style.display = 'none';
+  });
+
+  // =============== DETEKSI LOKASI: GPS + FALLBACK IP ===============
+  async function detectMyLocation() {
+    // Tampilkan loading
+    scheduleDisplayDiv.innerHTML = `<div class="loader"><i class="fas fa-spinner fa-pulse"></i> Meminta izin lokasi GPS...</div>`;
+    
+    // Cek apakah geolocation didukung
+    if (!navigator.geolocation) {
+      scheduleDisplayDiv.innerHTML = `<div class="error-message"><i class="fas fa-exclamation-triangle"></i> Browser tidak mendukung GPS. Mencari berdasarkan IP...</div>`;
+      await detectByIP();
+      return;
+    }
+    
+    // Promise wrapper untuk geolocation dengan timeout
+    const geoPromise = new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 8000 });
+    });
+    
+    try {
+      const position = await geoPromise;
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      await getCityFromCoordinates(lat, lng);
+    } catch (geoError) {
+      console.warn("GPS error:", geoError);
+      let pesan = "";
+      if (geoError.code === 1) pesan = "Izin lokasi ditolak. Mencari berdasarkan IP...";
+      else if (geoError.code === 2) pesan = "Lokasi GPS tidak tersedia. Mencari berdasarkan IP...";
+      else pesan = "Gagal mendapat lokasi GPS. Mencari berdasarkan IP...";
+      scheduleDisplayDiv.innerHTML = `<div class="info-loading"><i class="fas fa-globe"></i> ${pesan}</div>`;
+      await detectByIP();
+    }
+  }
+  
+  // Fallback: deteksi kota berdasarkan IP (menggunakan ip-api.com, gratis tanpa key)
+  async function detectByIP() {
+    try {
+      scheduleDisplayDiv.innerHTML = `<div class="loader"><i class="fas fa-spinner fa-pulse"></i> Mendeteksi kota berdasarkan alamat IP...</div>`;
+      // Gunakan ip-api.com/json/ (mendapatkan city, regionName)
+      const ipData = await fetchJSON("https://ip-api.com/json/?fields=status,city,regionName,country,lat,lon", 7000);
+      if (ipData.status === "success" && ipData.city) {
+        let cityName = ipData.city;
+        // Bersihkan kata "Kota" atau "Kabupaten" jika ada
+        cityName = cityName.replace(/^(Kota|Kabupaten)\s*/i, "").trim();
+        await matchCityByName(cityName, ipData.regionName);
+      } else {
+        throw new Error("IP tidak mengembalikan kota");
+      }
+    } catch (err) {
+      console.error(err);
+      scheduleDisplayDiv.innerHTML = `<div class="error-message"><i class="fas fa-map-marked-alt"></i> Gagal deteksi lokasi otomatis. Silakan pilih kota manual dari dropdown.</div>`;
+    }
+  }
+  
+  // Fungsi mencocokkan nama kota (dari GPS atau IP) ke database masterCities atau API cari
+  async function matchCityByName(cityName, region = "") {
+    if (!cityName) throw new Error("Nama kota kosong");
+    // Cari di masterCities yang sudah di-load
+    let matched = masterCities.find(c => 
+      c.nama.toUpperCase().includes(cityName.toUpperCase()) || 
+      cityName.toUpperCase().includes(c.nama.toUpperCase()) ||
+      (region && c.daerah?.toUpperCase().includes(region.toUpperCase()))
+    );
+    if (matched) {
+      selectedCity = { id: matched.id, lokasi: matched.nama, daerah: matched.daerah };
+      citySelect.value = matched.id;
+      cityInput.value = `${matched.nama}${matched.daerah ? `, ${matched.daerah}` : ''}`;
+      await loadSchedule();
+      return;
+    }
+    // Coba cari via API myQuran
+    try {
+      const searchResult = await fetchJSON(`https://api.myquran.com/v2/sholat/kota/cari/${encodeURIComponent(cityName)}`);
+      if (searchResult.status && searchResult.data && searchResult.data.length) {
+        const best = searchResult.data[0];
+        selectedCity = { id: best.id, lokasi: best.lokasi, daerah: best.daerah || "" };
+        citySelect.value = best.id;
+        cityInput.value = `${best.lokasi}${best.daerah ? `, ${best.daerah}` : ''}`;
+        await loadSchedule();
+        return;
+      }
+      throw new Error("Kota tidak ditemukan");
+    } catch (err) {
+      scheduleDisplayDiv.innerHTML = `<div class="error-message"><i class="fas fa-question-circle"></i> Kota "${cityName}" tidak dikenali. Silakan pilih dari dropdown.</div>`;
+    }
+  }
+  
+  async function getCityFromCoordinates(lat, lng) {
+    try {
+      scheduleDisplayDiv.innerHTML = `<div class="loader"><i class="fas fa-spinner fa-pulse"></i> Mengonversi koordinat (${lat.toFixed(2)}, ${lng.toFixed(2)}) ke nama kota...</div>`;
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1&accept-language=id`;
+      const data = await fetchJSON(url, 8000);
+      let city = "";
+      if (data && data.address) {
+        const addr = data.address;
+        city = addr.city || addr.town || addr.village || addr.suburb || addr.district || addr.county || "";
+      }
+      if (!city) throw new Error("Tidak dapat menentukan kota dari koordinat");
+      city = city.replace(/^(Kota|Kabupaten)\s*/i, "").trim();
+      await matchCityByName(city, data.address?.state || "");
+    } catch (err) {
+      console.error(err);
+      scheduleDisplayDiv.innerHTML = `<div class="error-message"><i class="fas fa-map-marked-alt"></i> Gagal konversi koordinat: ${err.message}. Coba deteksi IP sebagai fallback.</div>`;
+      await detectByIP();
+    }
+  }
+  
+  detectBtn.addEventListener('click', detectMyLocation);
+  
+  // =============== AMBIL JADWAL SHOLAT ===============
+  async function fetchPrayerSchedule(cityId, dateStr) {
+    const result = await fetchJSON(`https://api.myquran.com/v2/sholat/jadwal/${cityId}/${dateStr}`);
+    if (result.status === true && result.data && result.data.jadwal) return result.data;
+    else throw new Error(result.message || "Jadwal tidak tersedia");
+  }
+  
+  function renderSchedule(scheduleData) {
+    const jadwal = scheduleData.jadwal;
+    const lokasi = scheduleData.lokasi || selectedCity?.lokasi;
+    const daerah = scheduleData.daerah ? ` - ${scheduleData.daerah}` : (selectedCity?.daerah ? ` - ${selectedCity.daerah}` : '');
+    const tanggal = jadwal.tanggal || '-';
+    const prayers = [
+      { name: 'Imsak', icon: 'fas fa-moon', time: jadwal.imsak },
+      { name: 'Subuh', icon: 'fas fa-cloud-moon', time: jadwal.subuh },
+      { name: 'Terbit', icon: 'fas fa-sun', time: jadwal.terbit },
+      { name: 'Dhuha', icon: 'fas fa-sun', time: jadwal.dhuha },
+      { name: 'Dzuhur', icon: 'fas fa-sun', time: jadwal.dzuhur },
+      { name: 'Ashar', icon: 'fas fa-cloud-sun', time: jadwal.ashar },
+      { name: 'Maghrib', icon: 'fas fa-moon', time: jadwal.maghrib },
+      { name: 'Isya', icon: 'fas fa-star-of-life', time: jadwal.isya }
+    ];
+    let html = `<div class="location-info"><i class="fas fa-map-pin"></i> <strong>${lokasi}${daerah}</strong> — ${tanggal}</div><div class="prayer-grid">`;
+    prayers.forEach(p => {
+      const waktu = p.time || '-';
+      const isMain = ['Subuh', 'Dzuhur', 'Ashar', 'Maghrib', 'Isya'].includes(p.name);
+      html += `<div class="prayer-card"><div class="prayer-icon"><i class="${p.icon}"></i></div><div class="prayer-name">${p.name}</div><div class="prayer-time">${waktu}</div><div class="extra-time">${isMain ? '🕌 Wajib' : '✨ Sunnah'}</div></div>`;
+    });
+    html += `</div>`;
+    scheduleDisplayDiv.innerHTML = html;
+  }
+  
+  async function loadSchedule() {
+    if (!selectedCity || !selectedCity.id) {
+      scheduleDisplayDiv.innerHTML = `<div class="error-message">Pilih kota terlebih dahulu.</div>`;
+      return;
+    }
+    let dateVal = datePicker.value;
+    if (!dateVal) { setDefaultDate(); dateVal = datePicker.value; }
+    try {
+      loadingIndicator.style.display = 'flex';
+      scheduleDisplayDiv.innerHTML = '';
+      const data = await fetchPrayerSchedule(selectedCity.id, dateVal);
+      renderSchedule(data);
+    } catch (err) {
+      let msg = err.message;
+      if (msg.includes('tidak ditemukan')) msg = `Jadwal untuk ${selectedCity.lokasi} tgl ${dateVal} tidak tersedia. Coba tanggal lain.`;
+      scheduleDisplayDiv.innerHTML = `<div class="error-message"><i class="fas fa-times-circle"></i> ${msg}</div>`;
+    } finally {
+      loadingIndicator.style.display = 'none';
+    }
+  }
+  
+  searchBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!selectedCity) scheduleDisplayDiv.innerHTML = `<div class="error-message">Silakan pilih kota dari dropdown atau pencarian.</div>`;
+    else loadSchedule();
+  });
+  
+  // Inisialisasi
+  loadAllCities();
+</script>
+</body>
+  </html>
