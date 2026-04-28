@@ -321,7 +321,6 @@
   // Global variables
   let masterCities = [];          // array { id, nama, daerah } dari API
   let selectedCity = null;       // kota yang dipilih
-  let isDropdownReady = false;
 
   const citySelect = document.getElementById('citySelect');
   const cityInput = document.getElementById('cityInput');
@@ -331,15 +330,41 @@
   const scheduleDisplayDiv = document.getElementById('scheduleDisplay');
   const loadingIndicator = document.getElementById('loadingIndicator');
 
+  // ---------- STORAGE KEYS ----------
+  const STORAGE_CITY = "sholat_selected_city";
+  const STORAGE_DATE = "sholat_selected_date";
+
+  // Simpan ke localStorage
+  function saveToLocalStorage() {
+    if (selectedCity && selectedCity.id) {
+      const cityData = {
+        id: selectedCity.id,
+        nama: selectedCity.lokasi,
+        daerah: selectedCity.daerah
+      };
+      localStorage.setItem(STORAGE_CITY, JSON.stringify(cityData));
+    }
+    const currentDate = datePicker.value;
+    if (currentDate) {
+      localStorage.setItem(STORAGE_DATE, currentDate);
+    }
+  }
+
+  // Ambil dari localStorage
+  function loadFromLocalStorage() {
+    const savedCity = localStorage.getItem(STORAGE_CITY);
+    const savedDate = localStorage.getItem(STORAGE_DATE);
+    return { savedCity: savedCity ? JSON.parse(savedCity) : null, savedDate };
+  }
+
   // Set tanggal hari ini
   function setDefaultDate() {
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
     const dd = String(today.getDate()).padStart(2, '0');
-    datePicker.value = `${yyyy}-${mm}-${dd}`;
+    return `${yyyy}-${mm}-${dd}`;
   }
-  setDefaultDate();
 
   // Helper fetch dengan timeout
   async function fetchJSON(url, timeout = 10000) {
@@ -369,18 +394,9 @@
           daerah: city.daerah || ""
         }));
         populateDropdown(masterCities);
-        isDropdownReady = true;
-        // Set default kota pertama (Jakarta / kota pertama) agar user langsung lihat jadwal
-        if (masterCities.length > 0) {
-          const defaultCity = masterCities[0];
-          selectedCity = { id: defaultCity.id, lokasi: defaultCity.nama, daerah: defaultCity.daerah };
-          citySelect.value = defaultCity.id;
-          cityInput.value = `${defaultCity.nama}${defaultCity.daerah ? `, ${defaultCity.daerah}` : ''}`;
-          // langsung muat jadwal untuk kota pertama
-          await loadSchedule();
-        } else {
-          scheduleDisplayDiv.innerHTML = `<div class="error-message"><i class="fas fa-exclamation-triangle"></i> Tidak ada data kota dari API.</div>`;
-        }
+        
+        // Set kota dan tanggal berdasarkan prioritas: localStorage > Jakarta > kota pertama
+        await setInitialCityAndDate();
       } else {
         throw new Error("Format data kota tidak sesuai");
       }
@@ -403,6 +419,68 @@
     });
   }
 
+  // Fungsi untuk mencari kota Jakarta di masterCities (prioritas: "KOTA JAKARTA", "JAKARTA")
+  function findJakartaCity() {
+    // Cari yang persis "KOTA JAKARTA"
+    let jakarta = masterCities.find(c => c.nama === "KOTA JAKARTA");
+    if (!jakarta) {
+      jakarta = masterCities.find(c => c.nama.toUpperCase().includes("JAKARTA"));
+    }
+    return jakarta;
+  }
+
+  // Menentukan kota awal dan tanggal (prioritas: localStorage > Jakarta > kota pertama)
+  async function setInitialCityAndDate() {
+    const { savedCity, savedDate } = loadFromLocalStorage();
+    let targetCity = null;
+    let targetDate = null;
+
+    // 1. Coba gunakan dari localStorage jika ada dan valid (ID masih ada di masterCities)
+    if (savedCity && savedCity.id) {
+      const found = masterCities.find(c => c.id === savedCity.id);
+      if (found) {
+        targetCity = { id: found.id, lokasi: found.nama, daerah: found.daerah };
+      }
+    }
+
+    // 2. Jika tidak ada di storage atau ID tidak valid, cari Jakarta
+    if (!targetCity) {
+      targetCity = findJakartaCity();
+    }
+
+    // 3. Jika masih tidak ada (Jakarta tidak ditemukan), ambil kota pertama
+    if (!targetCity && masterCities.length > 0) {
+      targetCity = { id: masterCities[0].id, lokasi: masterCities[0].nama, daerah: masterCities[0].daerah };
+    }
+
+    // 4. Tanggal: dari storage atau hari ini
+    if (savedDate && /^\d{4}-\d{2}-\d{2}$/.test(savedDate)) {
+      targetDate = savedDate;
+    } else {
+      targetDate = setDefaultDate();
+    }
+
+    // Terapkan
+    if (targetCity) {
+      selectedCity = targetCity;
+      citySelect.value = targetCity.id;
+      cityInput.value = `${targetCity.lokasi}${targetCity.daerah ? `, ${targetCity.daerah}` : ''}`;
+    } else {
+      // fallback kalau benar-benar tidak ada kota (seharusnya tidak terjadi)
+      selectedCity = null;
+      scheduleDisplayDiv.innerHTML = `<div class="error-message">Tidak ada data kota. Coba refresh.</div>`;
+      return;
+    }
+
+    datePicker.value = targetDate;
+    
+    // Simpan ke localStorage agar sinkron (terutama jika baru pertama kali pake Jakarta)
+    saveToLocalStorage();
+    
+    // Muat jadwal
+    await loadSchedule();
+  }
+
   // Event dropdown: ketika user memilih dari dropdown
   citySelect.addEventListener('change', function() {
     const selectedOption = citySelect.options[citySelect.selectedIndex];
@@ -412,13 +490,22 @@
       const daerah = selectedOption.getAttribute('data-daerah');
       selectedCity = { id: id, lokasi: nama, daerah: daerah };
       cityInput.value = `${nama}${daerah ? `, ${daerah}` : ''}`;
-      // sembunyikan suggestions jika ada
       suggestionsBox.style.display = 'none';
+      saveToLocalStorage(); // simpan pilihan kota
       loadSchedule();
     } else {
-      // jika user memilih placeholder, jangan hapus selectedCity? biarkan saja tidak apa-apa
       selectedCity = null;
       cityInput.value = '';
+    }
+  });
+
+  // Event datePicker berubah -> simpan ke storage dan reload
+  datePicker.addEventListener('change', function() {
+    if (datePicker.value) {
+      saveToLocalStorage();
+      if (selectedCity && selectedCity.id) {
+        loadSchedule();
+      }
     }
   });
 
@@ -461,7 +548,6 @@
       div.className = 'suggestion-item';
       div.innerHTML = `<i class="fas fa-map-marker-alt"></i> ${city.lokasi} ${city.daerah ? `(${city.daerah})` : ''}`;
       div.addEventListener('click', () => {
-        // pilih kota dari saran
         selectedCity = {
           id: city.id,
           lokasi: city.lokasi,
@@ -469,13 +555,14 @@
         };
         cityInput.value = `${city.lokasi}${city.daerah ? `, ${city.daerah}` : ''}`;
         suggestionsBox.style.display = 'none';
-        // sync dropdown: coba set dropdown jika ada ID yang sama
+        // sinkronkan dropdown jika ada ID yang sama
         const optionToSelect = citySelect.querySelector(`option[value="${city.id}"]`);
         if (optionToSelect) {
           citySelect.value = city.id;
         } else {
-          citySelect.value = ""; // kota dari pencarian mungkin tidak ada di dropdown utama, tapi ID tetap valid
+          citySelect.value = "";
         }
+        saveToLocalStorage();
         loadSchedule();
       });
       suggestionsBox.appendChild(div);
@@ -546,8 +633,9 @@
     }
     let dateVal = datePicker.value;
     if (!dateVal) {
-      setDefaultDate();
-      dateVal = datePicker.value;
+      dateVal = setDefaultDate();
+      datePicker.value = dateVal;
+      saveToLocalStorage();
     }
     try {
       loadingIndicator.style.display = 'flex';
@@ -574,6 +662,7 @@
       scheduleDisplayDiv.innerHTML = `<div class="error-message"><i class="fas fa-exclamation-circle"></i> Pilih kota dari dropdown atau dari saran pencarian.</div>`;
       return;
     }
+    saveToLocalStorage(); // simpan sebelum load
     loadSchedule();
   });
 
@@ -581,4 +670,4 @@
   loadAllCitiesFromAPI();
 </script>
 </body>
-</html>
+                                                                                </html>
